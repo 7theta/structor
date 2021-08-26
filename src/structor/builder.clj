@@ -11,13 +11,14 @@
   (:require [structor.shadow-cljs :as shadow-cljs]
             [structor.tailwind :as tailwind]
             [crusta.core :as sh]
+            [utilis.fn :refer [fsafe]]
             [integrant.core :as ig])
   (:import [java.net URL URLConnection]))
 
 (declare watch stop clean npm-available?)
 
-(defmethod ig/init-key :structor.builder/watcher [_ _]
-  (watch))
+(defmethod ig/init-key :structor.builder/watcher [_ {:keys [hooks] :as opts}]
+  (watch opts))
 
 (defmethod ig/halt-key! :structor.builder/watcher [_ watchers]
   (stop watchers))
@@ -28,19 +29,23 @@
   (println @(sh/run ["npx" "browserslist@latest" "--update-db"])))
 
 (defn release
-  []
-  (when (npm-available?) (init))
-  (clean)
-  (println (shadow-cljs/release))
-  (println (tailwind/release))
-  (println @(sh/run ["lein" "uberjar"])))
+  ([] (release nil))
+  ([{:keys [hooks]}]
+   (clean)
+   (when (npm-available?) (init))
+   ((fsafe (:init hooks)))
+   (println (shadow-cljs/release))
+   (println (tailwind/release))
+   (println @(sh/run ["lein" "uberjar"]))))
 
 (defn watch
-  []
-  (when (npm-available?) (init))
-  (clean)
-  {:shadow-cljs (shadow-cljs/watch)
-   :tailwind (tailwind/watch)})
+  ([] (watch nil))
+  ([{:keys [hooks]}]
+   (clean)
+   (when (npm-available?) (init))
+   ((fsafe (:init hooks)))
+   {:shadow-cljs (shadow-cljs/watch hooks)
+    :tailwind (tailwind/watch hooks)}))
 
 (defn stop
   [watchers]
