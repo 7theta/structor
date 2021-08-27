@@ -44,8 +44,8 @@
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
-   {:shadow-cljs (shadow-cljs/watch hooks)
-    :tailwind (tailwind/watch hooks)}))
+   {:shadow-cljs (shadow-cljs/watch)
+    :tailwind (tailwind/watch)}))
 
 (defn stop
   [watchers]
