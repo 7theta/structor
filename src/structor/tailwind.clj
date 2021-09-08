@@ -31,6 +31,10 @@
   []
   (sh/exec ["node_modules/.bin/postcss"
             "resources/css/tailwind.css"
+            "-o" "resources/public/css/main.css"]
+           :environment {"TAILWIND_MODE" "watch"})
+  (sh/exec ["node_modules/.bin/postcss"
+            "resources/css/tailwind.css"
             "-o" "resources/public/css/main.css" "-w"]
            :environment {"TAILWIND_MODE" "watch"}))
 
