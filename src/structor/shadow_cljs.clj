@@ -15,25 +15,27 @@
 
 (declare watch stop)
 
-(defmethod ig/init-key :structor.shadow-cljs/watcher [_ _]
-  {:watcher (watch)})
+(defmethod ig/init-key :structor.shadow-cljs/watcher [_ opts]
+  {:watcher (watch opts)})
 
 (defmethod ig/halt-key! :structor.shadow-cljs/watcher [_ {:keys [watcher]}]
   (stop watcher))
 
 (defn release
-  []
-  (shadow/release :prod))
+  [{:keys [build-ids]}]
+  (doseq [build-id build-ids]
+    (shadow/release build-id)))
 
 (defn watch
-  []
+  [{:keys [build-ids]}]
   (server/start!)
-  (shadow/watch :dev))
+  (doseq [build-id build-ids]
+    (shadow/watch build-id)))
 
 (defn stop
-  [_watcher]
+  [watcher]
   (server/stop!))
 
 (defn clean
-  []
-  @(sh/run ["rm" "-rf" "target" "resources/public/js/compiled" ".shadow-cljs"]))
+  [{:keys [paths]}]
+  @(sh/run (into ["rm" "-rf" "target" "resources/public/js/compiled" ".shadow-cljs"] paths)))

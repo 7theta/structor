@@ -30,22 +30,22 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [hooks]}]
+  ([{:keys [hooks] :as opts}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
-   (println (shadow-cljs/release))
-   (println (tailwind/release))
+   (println (shadow-cljs/release (:cljs opts)))
+   (println (tailwind/release (:tailwind opts)))
    (println @(sh/run ["lein" "uberjar"]))))
 
 (defn watch
   ([] (watch nil))
-  ([{:keys [hooks]}]
+  ([{:keys [hooks] :as opts}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
-   {:shadow-cljs (shadow-cljs/watch)
-    :tailwind (tailwind/watch)}))
+   {:shadow-cljs (shadow-cljs/watch (:cljs opts))
+    :tailwind (tailwind/watch (:tailwind opts))}))
 
 (defn stop
   [watchers]
@@ -54,9 +54,10 @@
   nil)
 
 (defn clean
-  []
-  (shadow-cljs/clean)
-  (tailwind/clean))
+  ([] (clean nil))
+  ([opts]
+   (shadow-cljs/clean (:cljs opts))
+   (tailwind/clean (:tailwind opts))))
 
 
 ;;; Private

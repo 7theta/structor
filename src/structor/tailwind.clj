@@ -13,35 +13,41 @@
 
 (declare watch stop)
 
-(defmethod ig/init-key :structor.tailwind/watcher [_ _]
-  {:watcher (watch)})
+(defmethod ig/init-key :structor.tailwind/watcher [_ opts]
+  {:watcher (watch opts)})
 
 (defmethod ig/halt-key! :structor.tailwind/watcher [_ {:keys [watcher]}]
   (stop watcher))
 
 (defn release
-  []
-  @(sh/run ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css"]
-     :environment {"NODE_ENV" "production"
-                   "TAILWIND_MODE" "build"}))
+  [{:keys [configs]}]
+  (doseq [{:keys [input-file output-file]} configs]
+    @(sh/run ["node_modules/.bin/postcss"
+              input-file "-o" output-file]
+             :environment {"NODE_ENV" "production"
+                           "TAILWIND_MODE" "build"})))
 
 (defn watch
-  []
-  (sh/exec ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css"]
-           :environment {"TAILWIND_MODE" "watch"})
-  (sh/exec ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css" "-w"]
-           :environment {"TAILWIND_MODE" "watch"}))
+  [{:keys [configs]}]
+  (let [configs (or configs [{:input-file "resources/css/tailwind.css"
+                              :output-file "resources/public/css/main.css"}])]
+    (doseq [{:keys [input-file output-file]} configs]
+      (sh/exec ["node_modules/.bin/postcss"
+                input-file "-o" output-file]
+               :environment {"TAILWIND_MODE" "watch"}))
+    (map (fn [{:keys [input-file output-file]}]
+           (sh/exec ["node_modules/.bin/postcss"
+                     input-file "-o" output-file "-w"]
+                    :environment {"TAILWIND_MODE" "watch"})) configs)))
 
 (defn stop
   [watcher]
-  (sh/kill watcher))
+  (doseq [handle watcher]
+    (sh/kill handle)))
 
 (defn clean
-  []
-  @(sh/run ["rm" "-f" "resources/public/css/main.css"]))
+  [{:keys [configs]}]
+  (let [configs (or configs [{:input-file "resources/css/tailwind.css"
+                              :output-file "resources/public/css/main.css"}])]
+    (map (fn [{:keys [input-file output-file]}]
+           @(sh/run ["rm" "-f" output-file])) configs)))
