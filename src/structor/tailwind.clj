@@ -21,21 +21,15 @@
 
 (defn release
   []
-  @(sh/run ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css"]
+  @(sh/run ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css" "--minify"]
      :environment {"NODE_ENV" "production"
                    "TAILWIND_MODE" "build"}))
 
 (defn watch
   []
-  (sh/exec ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css"]
+  (sh/exec ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css"]
            :environment {"TAILWIND_MODE" "watch"})
-  (sh/exec ["node_modules/.bin/postcss"
-            "resources/css/tailwind.css"
-            "-o" "resources/public/css/main.css" "-w"]
+  (sh/exec ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css" "--watch"]
            :environment {"TAILWIND_MODE" "watch"}))
 
 (defn stop

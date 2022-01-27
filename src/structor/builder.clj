@@ -25,7 +25,7 @@
 
 (defn init
   []
-  (println @(sh/run ["npm" "install"]))
+  (println @(sh/run ["sh" "-c" ["npm" "install"]]))
   (println @(sh/run ["npx" "browserslist@latest" "--update-db"])))
 
 (defn release
