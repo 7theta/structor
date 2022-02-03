@@ -22,7 +22,8 @@
         "win": {
             "publish": [
                 {
-                    "provider": "generic"
+                    "provider": "generic",
+                    "url": "https://localhost"
                 }
             ]
         },

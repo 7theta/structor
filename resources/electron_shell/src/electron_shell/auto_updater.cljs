@@ -38,13 +38,13 @@
                                 (try (when-let [server @server]
                                        (j/call server :close))
                                      (catch js/Error e
-                                       (log/error e)))
+                                       (log/info e)))
                                 (reset! server nil))]
           (j/assoc! auto-updater :logger log)
           (j/assoc-in! auto-updater [:logger :transports :file :level] "info")
           (j/call auto-updater :on "error"
                   (fn [error]
-                    (log/error error)
+                    (log/info error)
                     (shutdown-server)))
           (j/call auto-updater :on "checking-for-update" (fn []))
           (j/call auto-updater :on "update-available" (fn []))
@@ -87,8 +87,8 @@
                                                           (j/call auto-updater :checkForUpdatesAndNotify)))
                                           (j/call :catch (fn [error]
                                                            (shutdown-server)
-                                                           (log/error error))))))]
+                                                           (log/info error))))))]
             (check-for-updates)))
         (catch js/Error e
-          (log/error e)))
+          (log/info e)))
       (log/warn "AutoUpdater not available on this platform.")))
