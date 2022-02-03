@@ -15,7 +15,8 @@
     "devDependencies": {
         "electron": "14.0.0",
         "electron-builder": "22.11.7",
-        "shadow-cljs": "2.15.9"
+        "shadow-cljs": "2.15.9",
+        "electron-builder-squirrel-windows": "23.0.0-alpha.2"
     },
     "build": {
         "win": {

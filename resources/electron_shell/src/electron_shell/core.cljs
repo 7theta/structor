@@ -1,5 +1,6 @@
 (ns electron-shell.core
   (:require [electron-shell.auto-updater :as auto-updater]
+            [electron-shell.file-utils :refer [pathname file-url]]
             [electron :as e :refer [app BrowserWindow globalShortcut Menu dialog]]
             [electron-log :as log]
             ["child_process" :refer [spawn]]
@@ -13,19 +14,6 @@
 (defonce main-window (atom nil))
 (defonce is-debug? (not (j/get app :isPackaged)))
 (defonce kill-when-empty-on-darwin? true)
-
-(defn pathname
-  [relative-path]
-  (path/join js/__dirname
-             (if is-debug?
-               relative-path
-               (str "../../" relative-path))))
-
-(defn file-url
-  [pathname]
-  (url/format #js {:pathname pathname
-                   :protocol "file:"
-                   :slashes true}))
 
 (def splash-index-pathname (pathname "splash/index.html"))
 (def splash-index-url (file-url splash-index-pathname))
@@ -63,9 +51,10 @@
           resources))
 
 (defn- spawn-processes
-  []
+  [{:keys [on-ready]}]
   (when config
-    (let [{:keys [resources processes]} config]
+    (let [{:keys [resources processes]} config
+          spawn-count (atom 0)]
       (doseq [process-index (range (count processes))]
         (try (let [{:keys [name
                            cmd
@@ -94,10 +83,18 @@
                    (j/call-in process [:stdout :on] "data"
                               (let [logger (logger "stdout: ")]
                                 (if (= "auto" load-from-url)
-                                  (comp auto-load-from-url logger)
+                                  (comp #(on-ready)
+                                     auto-load-from-url
+                                     logger)
                                   logger)))
                    (j/call-in process [:stderr :on] "data" (logger "stderr: "))
-                   (j/call process :on "close" (logger "process exited with code: ")))))
+                   (j/call process :on "close" (logger "process exited with code: "))
+                   (when (not= "auto" load-from-url)
+                     (j/call process :on "spawn"
+                             (fn []
+                               (when (= (count processes)
+                                        (swap! spawn-count inc))
+                                 (js/setTimeout on-ready))))))))
              (catch js/Error e
                (log/error e)))))))
 
@@ -127,7 +124,9 @@
            splash-window (create-splash-window)]
        (when (fs/existsSync main-index-pathname)
          (j/call window :loadURL main-index-url))
-       (spawn-processes)
+       (spawn-processes {:on-ready (fn []
+                                     (when-let [auto-update (:auto-update config)]
+                                       (auto-updater/init auto-update)))})
        (j/call window :once "ready-to-show"
                (fn []
                  (when splash-window
@@ -187,9 +186,7 @@
             (j/call :whenReady)
             (j/call :then (fn []
                             (create-window)
-                            (j/call app :on "activate" maybe-create-window)
-                            (when-let [auto-update (:auto-update config)]
-                              (auto-updater/init auto-update)))))
+                            (j/call app :on "activate" maybe-create-window))))
         (j/call app :on "window-all-closed" maybe-quit)
         (j/call js/process :on "exit" kill-running-processes)
         (j/call js/process :on "SIGINT" exit-cleanly)

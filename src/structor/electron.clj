@@ -17,7 +17,8 @@
    "shadow-cljs.edn"
    "src/electron_shell/core.cljs"
    "src/electron_shell/auto_updater.cljs"
-   "src/electron_shell/download.cljs"])
+   "src/electron_shell/download.cljs"
+   "src/electron_shell/file_utils.cljs"])
 
 (def default-build-directory ".electron-shell")
 

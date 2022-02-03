@@ -1,37 +1,55 @@
 (ns electron-shell.download
-  (:require [https :as https]
+  (:require [electron-shell.file-utils :refer [pathname file-url]]
+            [electron-log :as log]
+            [https :as https]
+            [http :as http]
             [js-yaml :as yaml]
             [fs :as fs]
             [path :as path]
-            [utilis.js :as j]))
+            [utilis.js :as j]
+            [utilis.map :refer [map-vals]]
+            [clojure.set :refer [rename-keys]]))
 
-(def hostname "192.168.18.6")
-(def port 8044)
-(def path-prefix "/update/win")
+(defn prep-mtls
+  [mtls]
+  (->> {:client-cert :cert
+        :client-key :key
+        :ca-cert :ca}
+       (rename-keys mtls)
+       (map-vals (comp fs/readFileSync file-url pathname))))
 
 (defn download-file-to-disk
-  [relative-path file-path]
+  [{:keys [hostname
+           port
+           path-prefix
+           protocol
+           mtls
+           uri
+           file-path]}]
   (js/Promise.
    (fn [resolve reject]
      (try
        (let [file (fs/createWriteStream file-path)
              file-info (atom nil)
-             request (https/request
-                      (clj->js {:hostname hostname
-                                :port port
-                                :path (str path-prefix (js/encodeURIComponent relative-path))
-                                :method "GET"
-                                :cert (fs/readFileSync "certs/client.crt")
-                                :key (fs/readFileSync "certs/client.key")
-                                :ca (fs/readFileSync "certs/root.crt")})
+             https? (= protocol "https:")
+             request ((if https?
+                        https/request
+                        http/request) (->> (when (and https? (seq mtls))
+                                             (prep-mtls mtls))
+                                           (merge {:hostname hostname
+                                                   :port port
+                                                   :path (str path-prefix (js/encodeURIComponent uri))
+                                                   :method "GET"})
+                                           clj->js)
                       (fn [response]
                         (if (not= 200 (j/get response :statusCode))
-                          (reject (js/Error. (str "Failed to download https://"
+                          (reject (js/Error. (str "Failed to download "
+                                                  protocol
+                                                  "//"
                                                   hostname
                                                   ":"
                                                   port
-                                                  "/"
-                                                  (str path-prefix (js/encodeURIComponent relative-path)))))
+                                                  (str path-prefix (js/encodeURIComponent uri)))))
                           (do (reset! file-info {:mime (j/get-in response [:headers :content-type])
                                                  :size (js/parseInt (j/get-in response [:headers :content-length]) 10)})
                               (j/call response :pipe file)))))]
@@ -46,35 +64,50 @@
                    (fs/unlink file-path)
                    (reject error)))
          (j/call request :end))
-       (catch js/Erorr e
+       (catch js/Error e
          (reject e))))))
 
 (defn download-latest
-  []
+  [{:keys [hostname
+           port
+           path-prefix
+           protocol
+           mtls
+           uri]
+    :as foo}]
   (js/Promise.
    (fn [resolve reject]
-     (try
-       (-> (https/request
-            (clj->js {:hostname hostname
-                      :port port
-                      :path (str path-prefix "latest.yml")
-                      :method "GET"
-                      :cert (fs/readFileSync "certs/client.crt")
-                      :key (fs/readFileSync "certs/client.key")
-                      :ca (fs/readFileSync "certs/root.crt")})
-            (fn [response]
-              (if (not= 200 (j/get response :statusCode))
-                (reject (js/Error. (str "Failed to download https://"
-                                        hostname
-                                        ":"
-                                        port
-                                        "/"
-                                        (str path-prefix "latest.yml"))))
-                (do (j/call response :on "data"
-                            (fn [data]
-                              (resolve {:obj (yaml/load data)
-                                        :text data})))
-                    (j/call response :on "error" reject)))))
-           (j/call :end))
-       (catch js/Erorr e
-         (reject e))))))
+     (let [https? (= protocol "https:")]
+       (prn (->> (when (and https? (seq mtls))
+                   (prep-mtls mtls))
+                 (merge {:hostname hostname
+                         :port port
+                         :path (str path-prefix "latest.yml")
+                         :method "GET"})
+                 clj->js))
+       (try (-> (->> (when (and https? (seq mtls))
+                       (prep-mtls mtls))
+                     (merge {:hostname hostname
+                             :port port
+                             :path (str path-prefix "/latest.yml")
+                             :method "GET"})
+                     clj->js)
+                ((if https?
+                   https/request
+                   http/request) (fn [response]
+                                   (if (not= 200 (j/get response :statusCode))
+                                     (reject (js/Error. (str "Failed to download "
+                                                             protocol
+                                                             "//"
+                                                             hostname
+                                                             ":"
+                                                             port
+                                                             (str path-prefix "/latest.yml"))))
+                                     (do (j/call response :on "data"
+                                                 (fn [data]
+                                                   (resolve {:obj (yaml/load data)
+                                                             :text data})))
+                                         (j/call response :on "error" reject)))))
+                (j/call :end))
+            (catch js/Error e
+              (reject e)))))))
