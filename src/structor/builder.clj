@@ -10,12 +10,14 @@
 (ns structor.builder
   (:require [structor.shadow-cljs :as shadow-cljs]
             [structor.tailwind :as tailwind]
+            [structor.electron :as electron]
             [crusta.core :as sh]
             [utilis.fn :refer [fsafe]]
-            [integrant.core :as ig])
+            [integrant.core :as ig]
+            [clojure.java.io :as io])
   (:import [java.net URL URLConnection]))
 
-(declare watch stop clean npm-available?)
+(declare watch stop clean npm-available? electron-available?)
 
 (defmethod ig/init-key :structor.builder/watcher [_ {:keys [hooks] :as opts}]
   (watch opts))
@@ -36,7 +38,9 @@
    ((fsafe (:init hooks)))
    (println (shadow-cljs/release))
    (println (tailwind/release))
-   (println @(sh/run ["lein" "uberjar"]))))
+   (println @(sh/run ["lein" "uberjar"]))
+   ((fsafe (:uberjar hooks)))
+   (electron/release)))
 
 (defn watch
   ([] (watch nil))
@@ -56,8 +60,8 @@
 (defn clean
   []
   (shadow-cljs/clean)
-  (tailwind/clean))
-
+  (tailwind/clean)
+  (electron/clean))
 
 ;;; Private
 
@@ -70,3 +74,11 @@
       (-> connection (.getInputStream) (.close))
       true)
     (catch Exception _ false)))
+
+(defn- electron-available?
+  []
+  (let [file (io/file "electron")]
+    (and (.exists file)
+         (.isDirectory file)
+         (or (.exists (io/file "electron/main/index.html"))
+             (.exists (io/file "electron.config.edn"))))))

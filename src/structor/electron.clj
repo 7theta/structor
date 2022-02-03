@@ -6,37 +6,46 @@
             [clojure.java.io :as io]
             [clojure.string :as st]))
 
+;; TODO
+;; - add auto-updater code
+;; - auto-update host/port mtls etc. should be configurable, not hard coded
+;; - figure out a reasonable build process for windows
+
 (declare copy-resource-files-to-build-directory
          copy-splash-files-to-build-directory
          copy-main-files-to-build-directory
          copy-config-files-to-build-directory
-         install-dependencies
-         compile-electron-shell-cljs
-         release-electron
          copy-out-release-artifacts)
-
-(defn build
-  []
-  (copy-resource-files-to-build-directory)
-  (copy-splash-files-to-build-directory)
-  (copy-main-files-to-build-directory)
-  (copy-config-files-to-build-directory)
-  (install-dependencies)
-  (compile-electron-shell-cljs)
-  (release-electron)
-  (copy-out-release-artifacts))
 
 (def electron-shell-resources
   ["package.json"
    "project.clj"
    "shadow-cljs.edn"
-   "src/electron_shell/core.cljs"])
+   "src/electron_shell/core.cljs"
+   "src/electron_shell/auto_updater.cljs"
+   "src/electron_shell/download.cljs"])
 
 (def build-directory ".electron-shell")
 
-(defn copy-resource-files-to-build-directory
+(defn clean
   []
   @(sh/run (format "rm -rf %s" build-directory))
+  @(sh/run "rm -rf electron/dist"))
+
+(defn release
+  []
+  (clean)
+  (copy-resource-files-to-build-directory)
+  (copy-splash-files-to-build-directory)
+  (copy-main-files-to-build-directory)
+  (copy-config-files-to-build-directory)
+  (println @(sh/run "npm install" :directory build-directory))
+  (println @(sh/run "npx shadow-cljs release main" :directory build-directory))
+  (println @(sh/run "npm run app:dist" :directory build-directory))
+  (copy-out-release-artifacts))
+
+(defn copy-resource-files-to-build-directory
+  []
   @(sh/run (format "mkdir -p %s" build-directory))
   (doseq [res electron-shell-resources]
     (when-let [directory (->> (-> res
@@ -64,7 +73,8 @@
               (if (.isDirectory file)
                 @(sh/run (format "cp -r %s %s/extraResources" resource build-directory))
                 @(sh/run (format "cp %s %s/extraResources" resource build-directory)))
-              (throw (ex-info (format "Resource file does not exist." {:resource resource}))))))
+              (throw (ex-info (format "Resource file does not exist.")
+                              {:resource resource})))))
         (->> config
              j/write-value-as-string
              (spit (format "%s/config.json" build-directory)))))))
@@ -83,26 +93,7 @@
                (.isDirectory main-dir))
       @(sh/run (format "cp -r electron/main %s" build-directory)))))
 
-(defn install-dependencies
-  []
-  (println @(sh/run "npm install" :directory build-directory)))
-
-(defn compile-electron-shell-cljs
-  []
-  (println @(sh/run "npx shadow-cljs release main" :directory build-directory)))
-
-(defn release-electron
-  []
-  (println @(sh/run "npm run app:dist" :directory build-directory)))
-
 (defn copy-out-release-artifacts
   []
-  @(sh/run "rm -rf electron/dist")
-
   @(sh/run "mkdir -p electron/dist")
   @(sh/run (format "cp -r %s/dist electron/" build-directory)))
-
-;; TODO
-;; - get it working with involo
-;; - figure out a reasonable build process for windows
-;; - add auto-updater code

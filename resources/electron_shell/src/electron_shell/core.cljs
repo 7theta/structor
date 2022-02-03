@@ -1,5 +1,6 @@
 (ns electron-shell.core
-  (:require [electron :as e :refer [app BrowserWindow globalShortcut Menu dialog]]
+  (:require [electron-shell.auto-updater :as auto-updater]
+            [electron :as e :refer [app BrowserWindow globalShortcut Menu dialog]]
             [electron-log :as log]
             ["child_process" :refer [spawn]]
             [path :as path]
@@ -34,6 +35,12 @@
 
 (def config-pathname (pathname "config.json"))
 (def config-url (file-url config-pathname))
+(def config (when (fs/existsSync config-pathname)
+              (-> config-pathname
+                  fs/readFileSync
+                  js/JSON.parse
+                  (js->clj :keywordize-keys true)
+                  (update :processes vec))))
 
 (defn alert
   [msg]
@@ -57,12 +64,8 @@
 
 (defn- spawn-processes
   []
-  (when (fs/existsSync config-pathname)
-    (let [{:keys [resources processes]} (-> config-pathname
-                                            fs/readFileSync
-                                            js/JSON.parse
-                                            (js->clj :keywordize-keys true)
-                                            (update :processes vec))]
+  (when config
+    (let [{:keys [resources processes]} config]
       (doseq [process-index (range (count processes))]
         (try (let [{:keys [name
                            cmd
@@ -184,7 +187,9 @@
             (j/call :whenReady)
             (j/call :then (fn []
                             (create-window)
-                            (j/call app :on "activate" maybe-create-window))))
+                            (j/call app :on "activate" maybe-create-window)
+                            (when-let [auto-update (:auto-update config)]
+                              (auto-updater/init auto-update)))))
         (j/call app :on "window-all-closed" maybe-quit)
         (j/call js/process :on "exit" kill-running-processes)
         (j/call js/process :on "SIGINT" exit-cleanly)
