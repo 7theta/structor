@@ -1,0 +1,38 @@
+{
+    "name": "electron-shell",
+    "version": "0.1.0",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "app:dir": "electron-builder --dir",
+        "app:dist": "electron-builder"
+    },
+    "dependencies": {
+        "electron-log": "4.4.5"
+    },
+    "devDependencies": {
+        "electron": "14.0.0",
+        "electron-builder": "22.11.7",
+        "shadow-cljs": "2.15.9",
+        "electron-log": "^4.4.5",
+        "electron-updater": "^4.6.1",
+        "express": "^4.17.2",
+        "js-yaml": "^4.1.0"
+    },
+    "build": {
+        "win": {
+            "publish": [
+                {
+                    "provider": "generic",
+                    "url": "http://localhost:5003/update/"
+                }
+            ]
+        },
+        "extraFiles": [
+            "main/**",
+            "splash/**",
+            "extraResources/**",
+            "config.json"
+        ]
+    }
+}

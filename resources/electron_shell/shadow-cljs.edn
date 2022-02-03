@@ -1,0 +1,6 @@
+{:lein true
+ :builds {:main {:target :node-script
+                 :output-to "main.js"
+                 :main electron-shell.core/main
+                 :compiler-options {:optimizations :advanced
+                                    :infer-externs :auto}}}}
