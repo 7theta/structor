@@ -4,8 +4,7 @@
     "main": "main.js",
     "scripts": {
         "start": "electron .",
-        "app:dir": "electron-builder --dir",
-        "app:dist": "electron-builder"
+        "release": "npm install && npx shadow-cljs release main && electron-builder"
     },
     "dependencies": {
         "electron-log": "4.4.5",

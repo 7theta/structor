@@ -17,7 +17,7 @@
             [clojure.java.io :as io])
   (:import [java.net URL URLConnection]))
 
-(declare watch stop clean npm-available? electron-available?)
+(declare watch stop clean npm-available?)
 
 (defmethod ig/init-key :structor.builder/watcher [_ {:keys [hooks] :as opts}]
   (watch opts))
@@ -32,7 +32,7 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [hooks]}]
+  ([{:keys [hooks electron]}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
@@ -40,7 +40,8 @@
    (println (tailwind/release))
    (println @(sh/run ["lein" "uberjar"]))
    ((fsafe (:uberjar hooks)))
-   (electron/release)))
+   (when (and electron (electron/available?))
+     (electron/release))))
 
 (defn watch
   ([] (watch nil))
@@ -74,11 +75,3 @@
       (-> connection (.getInputStream) (.close))
       true)
     (catch Exception _ false)))
-
-(defn- electron-available?
-  []
-  (let [file (io/file "electron")]
-    (and (.exists file)
-         (.isDirectory file)
-         (or (.exists (io/file "electron/main/index.html"))
-             (.exists (io/file "electron.config.edn"))))))
