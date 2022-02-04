@@ -3,7 +3,6 @@
             [electron-log :as log]
             [https :as https]
             [http :as http]
-            [js-yaml :as yaml]
             [fs :as fs]
             [path :as path]
             [utilis.js :as j]
@@ -29,7 +28,11 @@
   (js/Promise.
    (fn [resolve reject]
      (try
-       (let [file (fs/createWriteStream file-path)
+       (let [uri (js/encodeURIComponent uri)
+             uri (if (j/call uri :startsWith "/")
+                   uri
+                   (str "/" uri))
+             file (fs/createWriteStream file-path)
              file-info (atom nil)
              https? (= protocol "https:")
              request ((if https?
@@ -38,7 +41,7 @@
                                              (prep-mtls mtls))
                                            (merge {:hostname hostname
                                                    :port port
-                                                   :path (str path-prefix (js/encodeURIComponent uri))
+                                                   :path (str path-prefix uri)
                                                    :method "GET"})
                                            clj->js)
                       (fn [response]
@@ -49,7 +52,7 @@
                                                   hostname
                                                   ":"
                                                   port
-                                                  (str path-prefix (js/encodeURIComponent uri)))))
+                                                  (str path-prefix uri))))
                           (do (reset! file-info {:mime (j/get-in response [:headers :content-type])
                                                  :size (js/parseInt (j/get-in response [:headers :content-length]) 10)})
                               (j/call response :pipe file)))))]
@@ -57,57 +60,50 @@
          (j/call file :on "finish" #(resolve @file-info))
          (j/call request :on "error"
                  (fn [error]
-                   (fs/unlink file-path)
+                   (fs/unlink file-path (fn [error] (when error (log/info error))))
                    (reject error)))
          (j/call file :on "error"
                  (fn [error]
-                   (fs/unlink file-path)
+                   (fs/unlink file-path (fn [error] (when error (log/info error))))
                    (reject error)))
          (j/call request :end))
        (catch js/Error e
          (reject e))))))
 
-(defn download-latest
+(defn download
   [{:keys [hostname
            port
            path-prefix
            protocol
            mtls
-           uri]
-    :as foo}]
+           uri]}]
   (js/Promise.
    (fn [resolve reject]
-     (let [https? (= protocol "https:")]
-       (prn (->> (when (and https? (seq mtls))
-                   (prep-mtls mtls))
-                 (merge {:hostname hostname
-                         :port port
-                         :path (str path-prefix "latest.yml")
-                         :method "GET"})
-                 clj->js))
-       (try (-> (->> (when (and https? (seq mtls))
-                       (prep-mtls mtls))
-                     (merge {:hostname hostname
-                             :port port
-                             :path (str path-prefix "/latest.yml")
-                             :method "GET"})
-                     clj->js)
-                ((if https?
-                   https/request
-                   http/request) (fn [response]
-                                   (if (not= 200 (j/get response :statusCode))
-                                     (reject (js/Error. (str "Failed to download "
-                                                             protocol
-                                                             "//"
-                                                             hostname
-                                                             ":"
-                                                             port
-                                                             (str path-prefix "/latest.yml"))))
-                                     (do (j/call response :on "data"
-                                                 (fn [data]
-                                                   (resolve {:obj (yaml/load data)
-                                                             :text data})))
-                                         (j/call response :on "error" reject)))))
-                (j/call :end))
+     (let [https? (= protocol "https:")
+           uri (if (j/call uri :startsWith "/")
+                 uri
+                 (str "/" uri))]
+       (try (let [request ((if https?
+                             https/request
+                             http/request) (->> (when (and https? (seq mtls))
+                                                  (prep-mtls mtls))
+                                                (merge {:hostname hostname
+                                                        :port port
+                                                        :path (str path-prefix uri)
+                                                        :method "GET"})
+                                                clj->js)
+                           (fn [response]
+                             (if (not= 200 (j/get response :statusCode))
+                               (reject (js/Error. (str "Failed to download "
+                                                       protocol
+                                                       "//"
+                                                       hostname
+                                                       ":"
+                                                       port
+                                                       (str path-prefix uri))))
+                               (do (j/call response :on "data" resolve)
+                                   (j/call response :on "error" reject)))))]
+              (j/call request :on "error" (fn [error] (reject error)))
+              (j/call request :end))
             (catch js/Error e
               (reject e)))))))

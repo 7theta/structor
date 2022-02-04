@@ -14,6 +14,7 @@
 (defonce main-window (atom nil))
 (defonce is-debug? (not (j/get app :isPackaged)))
 (defonce kill-when-empty-on-darwin? true)
+(def platform js/process.platform)
 
 (def splash-index-pathname (pathname "splash/index.html"))
 (def splash-index-url (file-url splash-index-pathname))
@@ -60,9 +61,15 @@
                                                cmd
                                                args
                                                opts
-                                               load-from-url]
+                                               load-from-url
+                                               platforms]
                                         :as process-config} (nth processes process-index)]
-                                   (when cmd
+                                   (if (and cmd (or (not (seq platforms))
+                                                    (get (set (map (comp {:windows "win32"
+                                                                       :macos "darwin"}
+                                                                      keyword)
+                                                                   platforms))
+                                                         platform)))
                                      (let [cmd (replace-resource-refs resources cmd)
                                            args (when (seq args)
                                                   (map (partial replace-resource-refs resources) args))
@@ -101,7 +108,8 @@
                                        (j/call-in process [:stderr :on] "data" (logger "stderr: "))
                                        (j/call process :on "close" (logger "process exited with code: "))
                                        (when (not= "auto" load-from-url)
-                                         (j/call process :on "spawn" on-process-spawned)))))
+                                         (j/call process :on "spawn" on-process-spawned)))
+                                     (spawn-process (inc process-index))))
                                  (catch js/Error e
                                    (log/info e)))
                             (js/setTimeout on-ready)))]
@@ -132,13 +140,14 @@
                        (reset! main-window))
            splash-window (create-splash-window)]
        (when (and (:hide-menu-bar config)
-                  (= "win32" js/process.platform))
+                  (= "win32" platform))
          (j/call window :removeMenu))
        (when (fs/existsSync main-index-pathname)
          (j/call window :loadURL main-index-url))
-       (spawn-processes {:on-ready (fn []
-                                     #_(when-let [auto-update (:auto-update config)]
-                                         (auto-updater/init auto-update)))})
+       (if-let [auto-update (:auto-update config)]
+         (-> (auto-updater/init auto-update)
+             (j/call :then (fn [installed?]
+                             (spawn-processes {:on-ready (fn [] )})))))
        (j/call window :once "ready-to-show"
                (fn []
                  (when splash-window
@@ -190,7 +199,7 @@
 (defn- maybe-quit
   []
   (kill-running-processes)
-  (when (or kill-when-empty-on-darwin? (not= js/process.platform "darwin"))
+  (when (or kill-when-empty-on-darwin? (not= platform "darwin"))
     (j/call app :quit)))
 
 (defn- exit-cleanly

@@ -28,7 +28,7 @@
     (and (.exists file)
          (.isDirectory file)
          (or (.exists (io/file "electron/main/index.html"))
-             (.exists (io/file "electron.config.edn"))))))
+             (.exists (io/file "electron/config.edn"))))))
 
 (defn clean
   ([] (clean default-build-directory))
