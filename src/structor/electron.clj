@@ -77,12 +77,19 @@
     (when (.exists config-file)
       (read-string (slurp config-file)))))
 
-(defn update-app-name
-  [package-json-string]
-  (when-let [app-name (:name (config-file))]
-    (-> (j/read-value package-json-string)
-        (assoc "name" app-name)
-        (j/write-value-as-string pretty-object-mapper))))
+(defn update-package-field
+  ([package-json-string config-kp package-kp]
+   (update-package-field package-json-string config-kp package-kp identity))
+  ([package-json-string config-kp package-kp tx-value]
+   (if-let [value (if (sequential? config-kp)
+                    (get-in (config-file) config-kp)
+                    (get (config-file) config-kp))]
+     (let [value (tx-value value)]
+       (cond-> (j/read-value package-json-string)
+         (sequential? package-kp) (assoc-in package-kp value)
+         (not (sequential? package-kp)) (assoc package-kp value)
+         true (j/write-value-as-string pretty-object-mapper)))
+     package-json-string)))
 
 (defn copy-resource-files-to-build-directory
   [build-directory]
@@ -97,8 +104,18 @@
     (let [contents (cond-> (->> (format "electron_shell/%s" res)
                                 io/resource
                                 slurp)
-                     (= res "package.json") (update-app-name))]
-      (spit (format "%s/%s" build-directory res) contents))))
+                     (= res "package.json") (-> (update-package-field :name "name")
+                                                (update-package-field :author "author")
+                                                (update-package-field :description "description")
+                                                (update-package-field :app-id "appId")
+                                                (update-package-field :artifact-name "artifactName")
+                                                (update-package-field :app-icon ["build" "win" "icon"]
+                                                                      (partial str "build/"))))]
+      (spit (format "%s/%s" build-directory res) contents)))
+  (when-let [app-icon (:app-icon (config-file))]
+    (mkdir (format "%s/build" build-directory))
+    (cp (format "electron/%s" app-icon)
+        (format "%s/build" build-directory))))
 
 (defn copy-config-files-to-build-directory
   [build-directory]

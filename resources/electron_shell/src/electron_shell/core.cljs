@@ -131,11 +131,14 @@
                        (BrowserWindow.)
                        (reset! main-window))
            splash-window (create-splash-window)]
+       (when (and (:hide-menu-bar config)
+                  (= "win32" js/process.platform))
+         (j/call window :removeMenu))
        (when (fs/existsSync main-index-pathname)
          (j/call window :loadURL main-index-url))
        (spawn-processes {:on-ready (fn []
-                                     (when-let [auto-update (:auto-update config)]
-                                       (auto-updater/init auto-update)))})
+                                     #_(when-let [auto-update (:auto-update config)]
+                                         (auto-updater/init auto-update)))})
        (j/call window :once "ready-to-show"
                (fn []
                  (when splash-window
