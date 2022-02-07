@@ -55,6 +55,10 @@
   [{:keys [on-ready]}]
   (when config
     (let [{:keys [resources processes]} config
+          _ (doseq [resource resources]
+              (log/info (str (auto-updater/file-checksum (pathname (str "extraResources/" resource)))
+                             " "
+                             resource)))
           spawn-process (fn spawn-process [process-index]
                           (if (< process-index (count processes))
                             (try (let [{:keys [name
