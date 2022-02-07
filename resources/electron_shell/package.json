@@ -1,0 +1,39 @@
+{
+    "name": "electron-shell",
+    "appId": "com.seventheta.aries",
+    "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
+    "version": "0.1.0",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "release": "npm install && npx shadow-cljs release main && electron-builder"
+    },
+    "dependencies": {
+        "electron-log": "4.4.5",
+        "electron-updater": "4.6.1",
+        "express": "4.17.2",
+        "js-yaml": "4.1.0"
+    },
+    "devDependencies": {
+        "electron": "14.0.0",
+        "electron-builder": "22.11.7",
+        "shadow-cljs": "2.15.9"
+    },
+    "build": {
+        "win": {
+            "target": "zip",
+            "publish": [
+                {
+                    "provider": "generic",
+                    "url": "https://localhost"
+                }
+            ]
+        },
+        "extraFiles": [
+            "main/**",
+            "splash/**",
+            "extraResources/**",
+            "config.json"
+        ]
+    }
+}

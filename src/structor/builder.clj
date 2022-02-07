@@ -10,9 +10,11 @@
 (ns structor.builder
   (:require [structor.shadow-cljs :as shadow-cljs]
             [structor.tailwind :as tailwind]
+            [structor.electron :as electron]
             [crusta.core :as sh]
             [utilis.fn :refer [fsafe]]
-            [integrant.core :as ig])
+            [integrant.core :as ig]
+            [clojure.java.io :as io])
   (:import [java.net URL URLConnection]))
 
 (declare watch stop clean npm-available?)
@@ -30,13 +32,16 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [hooks]}]
+  ([{:keys [hooks electron]}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
    (println (shadow-cljs/release))
    (println (tailwind/release))
-   (println @(sh/run ["lein" "uberjar"]))))
+   (println @(sh/run ["lein" "uberjar"]))
+   ((fsafe (:uberjar hooks)))
+   (when (and electron (electron/available?))
+     (electron/release))))
 
 (defn watch
   ([] (watch nil))
@@ -56,8 +61,8 @@
 (defn clean
   []
   (shadow-cljs/clean)
-  (tailwind/clean))
-
+  (tailwind/clean)
+  (electron/clean))
 
 ;;; Private
 
