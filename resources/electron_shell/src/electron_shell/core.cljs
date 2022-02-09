@@ -52,72 +52,77 @@
           resources))
 
 (defn- spawn-processes
-  [{:keys [on-ready]}]
-  (when config
-    (let [{:keys [resources processes]} config
-          _ (doseq [resource resources]
-              (log/info (str (auto-updater/file-checksum (pathname (str "extraResources/" resource)))
-                             " "
-                             resource)))
-          spawn-process (fn spawn-process [process-index]
-                          (if (< process-index (count processes))
-                            (try (let [{:keys [name
-                                               cmd
-                                               args
-                                               opts
-                                               load-from-url
-                                               platforms]
-                                        :as process-config} (nth processes process-index)]
-                                   (if (and cmd (or (not (seq platforms))
-                                                    (get (set (map (comp {:windows "win32"
-                                                                       :macos "darwin"}
-                                                                      keyword)
-                                                                   platforms))
-                                                         platform)))
-                                     (let [cmd (replace-resource-refs resources cmd)
-                                           args (when (seq args)
-                                                  (map (partial replace-resource-refs resources) args))
-                                           _ (log/info (str "spawning process: "
-                                                            cmd
-                                                            (when args (str " " args))
-                                                            (when opts (str " " opts))))
-                                           process (cond
-                                                     (and cmd args opts) (spawn cmd (clj->js args) (clj->js opts))
-                                                     (and cmd args) (spawn cmd (clj->js args))
-                                                     cmd (spawn cmd)
-                                                     :else (throw (js/Error. (str "Unable to spawn process"
-                                                                                  (clj->js process-config)))))
-                                           log-prefix (if name
-                                                        (str "[" name "] ")
-                                                        (str "[process_" process-index "]"))
-                                           logger (fn [msg]
-                                                    (fn [data]
-                                                      (->> data
-                                                           (str log-prefix msg)
-                                                           log/info)
-                                                      data))
-                                           on-process-spawned (fn [] (spawn-process (inc process-index)))]
-                                       (swap! running-processes conj {:process process
-                                                                      :config process-config})
-                                       (when (and (string? load-from-url)
-                                                  (not= "auto" load-from-url))
-                                         (j/call @main-window :loadURL load-from-url))
-                                       (j/call-in process [:stdout :on] "data"
-                                                  (let [logger (logger "stdout: ")]
-                                                    (if (= "auto" load-from-url)
-                                                      (comp #(on-process-spawned)
-                                                         auto-load-from-url
-                                                         logger)
-                                                      logger)))
-                                       (j/call-in process [:stderr :on] "data" (logger "stderr: "))
-                                       (j/call process :on "close" (logger "process exited with code: "))
-                                       (when (not= "auto" load-from-url)
-                                         (j/call process :on "spawn" on-process-spawned)))
-                                     (spawn-process (inc process-index))))
-                                 (catch js/Error e
-                                   (log/info e)))
-                            (js/setTimeout on-ready)))]
-      (spawn-process 0))))
+  []
+  (js/Promise.
+   (fn [resolve reject]
+     (try (if config
+            (let [{:keys [resources processes]} config
+                  _ (doseq [resource resources]
+                      (log/info (str (auto-updater/file-checksum (pathname (str "extraResources/" resource)))
+                                     " "
+                                     resource)))
+                  spawn-process (fn spawn-process [process-index]
+                                  (if (< process-index (count processes))
+                                    (try (let [{:keys [name
+                                                       cmd
+                                                       args
+                                                       opts
+                                                       load-from-url
+                                                       platforms]
+                                                :as process-config} (nth processes process-index)]
+                                           (if (and cmd (or (not (seq platforms))
+                                                            (get (set (map (comp {:windows "win32"
+                                                                               :macos "darwin"}
+                                                                              keyword)
+                                                                           platforms))
+                                                                 platform)))
+                                             (let [cmd (replace-resource-refs resources cmd)
+                                                   args (when (seq args)
+                                                          (map (partial replace-resource-refs resources) args))
+                                                   _ (log/info (str "spawning process: "
+                                                                    cmd
+                                                                    (when args (str " " args))
+                                                                    (when opts (str " " opts))))
+                                                   process (cond
+                                                             (and cmd args opts) (spawn cmd (clj->js args) (clj->js opts))
+                                                             (and cmd args) (spawn cmd (clj->js args))
+                                                             cmd (spawn cmd)
+                                                             :else (throw (js/Error. (str "Unable to spawn process"
+                                                                                          (clj->js process-config)))))
+                                                   log-prefix (if name
+                                                                (str "[" name "] ")
+                                                                (str "[process_" process-index "]"))
+                                                   logger (fn [msg]
+                                                            (fn [data]
+                                                              (->> data
+                                                                   (str log-prefix msg)
+                                                                   log/info)
+                                                              data))
+                                                   on-process-spawned (fn [] (spawn-process (inc process-index)))]
+                                               (swap! running-processes conj {:process process
+                                                                              :config process-config})
+                                               (when (and (string? load-from-url)
+                                                          (not= "auto" load-from-url))
+                                                 (j/call @main-window :loadURL load-from-url))
+                                               (j/call-in process [:stdout :on] "data"
+                                                          (let [logger (logger "stdout: ")]
+                                                            (if (= "auto" load-from-url)
+                                                              (comp #(on-process-spawned)
+                                                                 auto-load-from-url
+                                                                 logger)
+                                                              logger)))
+                                               (j/call-in process [:stderr :on] "data" (logger "stderr: "))
+                                               (j/call process :on "close" (logger "process exited with code: "))
+                                               (when (not= "auto" load-from-url)
+                                                 (j/call process :on "spawn" on-process-spawned)))
+                                             (spawn-process (inc process-index))))
+                                         (catch js/Error e
+                                           (log/info e)))
+                                    (resolve)))]
+              (spawn-process 0))
+            (resolve))
+          (catch js/Error e
+            (reject e))))))
 
 (defn create-splash-window
   []
@@ -150,8 +155,8 @@
          (j/call window :loadURL main-index-url))
        (if-let [auto-update (:auto-update config)]
          (-> (auto-updater/init auto-update)
-             (j/call :then (fn [installed?]
-                             (spawn-processes {:on-ready (fn [] )})))))
+             (j/call :then (fn [installed] (spawn-processes)))
+             (j/call :catch (fn [error] (log/info error)))))
        (j/call window :once "ready-to-show"
                (fn []
                  (when splash-window
