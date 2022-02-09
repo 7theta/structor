@@ -4,30 +4,25 @@
             [electron :refer [app BrowserWindow dialog autoUpdater]]
             [electron-log :as log]
             [crypto :as crypto]
-            [js-yaml :as yaml]
             [fs :as fs]
             [path :as path]
-            [express :default express]
-            [utilis.js :as j]))
+            [utilis.js :as j]
+            [utilis.types.number :refer [string->long]]))
 
 (def default-check-interval-s 3600)
 (def updates-directory-path (path/join (j/call app :getPath "temp") "updates"))
+(def latest-json-path (str updates-directory-path "/latest.json"))
+(def platform js/process.platform)
 
 (defn alert
   [msg]
   (j/call dialog :showErrorBox (str msg) (str msg)))
 
-(defn start-server
-  [directory]
-  (let [app (express)]
-    (j/call app :use "/update" (j/call express :static directory))
-    (j/call app :listen 0 "localhost")))
-
 (defn dissect-url
   [url]
   (let [url (js/URL. url)]
     {:hostname (j/get url :hostname)
-     :port (j/get url :port)
+     :port (string->long (j/get url :port))
      :path-prefix (j/get url :pathname)
      :protocol (j/get url :protocol)}))
 
@@ -40,179 +35,167 @@
        (catch js/Error e
          nil)))
 
-(defn electron-builder-auto-updater
-  [{:keys [url] :as auto-update-config}]
-  (let [auto-updater autoUpdater
-        server (atom nil)
-        shutdown-server (fn []
-                          (try (when-let [server @server]
-                                 (j/call server :close))
-                               (catch js/Error e
-                                 (log/info e)))
-                          (reset! server nil))]
-    (j/assoc! auto-updater :logger log)
-    (j/assoc-in! auto-updater [:logger :transports :file :level] "info")
-    (j/call auto-updater :on "error"
-            (fn [error]
-              (log/info error)
-              (shutdown-server)))
-    (j/call auto-updater :on "checking-for-update" (fn []))
-    (j/call auto-updater :on "update-available" (fn []))
-    (j/call auto-updater :on "update-not-available" (fn [] (shutdown-server)))
-    (j/call auto-updater :on "download-progress" (fn []))
-    (j/call auto-updater :on "update-downloaded"
-            (fn [info]
-              (shutdown-server)
-              (-> dialog
-                  (j/call :showMessageBox
-                          (clj->js {:type "info"
-                                    :buttons ["Restart" "Later"]
-                                    :title "Application Update"
-                                    :message ""
-                                    :detail "A new version has been downloaded. Restart the application to apply the updates."}))
-                  (j/call :then (fn [return-value]
-                                  (when (zero? (j/get return-value :response))
-                                    (j/call auto-updater :quitAndInstall)))))))
-    (let [check-for-updates (fn []
-                              (-> (download (assoc auto-update-config :uri "latest.yml"))
-                                  (j/call :then (fn [text]
-                                                  (let [obj (yaml/load text)
-                                                        url (j/get-in obj [:files 0 :url])]
-                                                    (fs/writeFileSync (str updates-directory-path "/latest.yml") text)
-                                                    (download-file-to-disk
-                                                     (assoc auto-update-config
-                                                            :uri url
-                                                            :file-path (str updates-directory-path "/" url))))))
-                                  (j/call :then (fn []
-                                                  (shutdown-server)
-                                                  (reset! server (start-server updates-directory-path))
-                                                  (j/call autoUpdater :setFeedURL
-                                                          (str "http://localhost:"
-                                                               (-> @server
-                                                                   (j/call :address)
-                                                                   (j/get :port))
-                                                               "/update/"))
-                                                  (j/call auto-updater :checkForUpdatesAndNotify)))
-                                  (j/call :catch (fn [error]
-                                                   (shutdown-server)
-                                                   (log/info error)))))]
-      (check-for-updates))))
+(defn updated-resource-checksum
+  [resource]
+  (file-checksum (str updates-directory-path "/" resource)))
 
-(defn auto-update-resources
-  [{:keys [url] :as auto-update-config}]
-  (let [check-for-updates (fn []
-                            (-> (download (assoc auto-update-config :uri "latest.json"))
-                                (j/call :then (fn [text]
-                                                (log/info (str "Got latest.json from update server\n" text))
-                                                (let [{:keys [resources]} (-> text
-                                                                              js/JSON.parse
-                                                                              (js->clj :keywordize-keys true))]
-                                                  (fs/writeFileSync (str updates-directory-path "/latest.json") text)
-                                                  (let [to-download (filter (fn [{:keys [path checksum]}]
-                                                                              (try (not= (->> path
-                                                                                              (str "extraResources/")
-                                                                                              pathname
-                                                                                              file-checksum)
-                                                                                         checksum)
-                                                                                   (catch js/Error e
-                                                                                     (log/info e)
-                                                                                     false)))
-                                                                            resources)
-                                                        downloaded (atom 0)]
-                                                    (doseq [{:keys [path checksum]} to-download]
-                                                      (log/info (str "Downloading updated resource file: " path))
-                                                      (-> (assoc auto-update-config
-                                                                 :uri path
-                                                                 :file-path (str updates-directory-path "/" path))
-                                                          download-file-to-disk
-                                                          (j/call :then (fn []
-                                                                          (log/info (str "Downloaded updated resource file: " path))
-                                                                          (when (= (swap! downloaded inc) (count to-download))
-                                                                            (-> dialog
-                                                                                (j/call :showMessageBox
-                                                                                        (clj->js {:type "info"
-                                                                                                  :buttons ["Restart" "Later"]
-                                                                                                  :title "Application Update"
-                                                                                                  :message ""
-                                                                                                  :detail "A new version has been downloaded. Restart the application to apply the updates."}))
-                                                                                (j/call :then (fn [return-value]
-                                                                                                (when (zero? (j/get return-value :response))
-                                                                                                  (j/call app :relaunch)
-                                                                                                  (j/call app :exit 0))))))))))))))
-                                (j/call :catch (fn [error] (log/info error)))))]
-    (check-for-updates)))
+(defn installed-resource-checksum
+  [resource]
+  (->> resource
+       (str "extraResources/")
+       pathname
+       file-checksum))
 
-(defn check-for-updates-timer
+(defn latest-json-audit
+  ([] (latest-json-audit
+       (when (fs/existsSync latest-json-path)
+         (-> (fs/readFileSync latest-json-path)
+             js/JSON.parse
+             (js->clj :keywordize-keys true)))))
+  ([latest-json]
+   (when latest-json
+     (update latest-json :resources
+             (fn [resources]
+               (mapv (fn [{:keys [checksum path] :as resource}]
+                       (assoc resource
+                              :checksums {:remote checksum
+                                          :local-installed (installed-resource-checksum path)
+                                          :local-downloaded (updated-resource-checksum path)}))
+                     resources))))))
+
+(defn check-for-updates
+  [{:keys [url] :as auto-update-config}]
+  (js/Promise.
+   (fn [resolve reject]
+     (-> auto-update-config
+         (assoc :uri "latest.json")
+         download
+         (j/call :then (fn [text]
+                         (log/info (str "Got latest.json from update server\n" text))
+                         (if-let [to-download (->> (-> text
+                                                       js/JSON.parse
+                                                       (js->clj :keywordize-keys true)
+                                                       latest-json-audit)
+                                                   :resources
+                                                   (filter (fn [{:keys [path checksums]}]
+                                                             (let [{:keys [remote local-installed local-downloaded]} checksums]
+                                                               (and remote local-installed
+                                                                    (not= remote local-installed)
+                                                                    (or (not local-downloaded)
+                                                                        (not= local-downloaded remote))))))
+                                                   not-empty)]
+                           (let [downloaded (atom [])
+                                 check-done (fn []
+                                              (when (= (count @downloaded) (count to-download))
+                                                (if (some :success @downloaded)
+                                                  (-> dialog
+                                                      (j/call :showMessageBox
+                                                              (clj->js {:type "info"
+                                                                        :buttons ["Restart" "Later"]
+                                                                        :title "Application Update"
+                                                                        :message ""
+                                                                        :detail "A new version has been downloaded. Restart the application to apply the updates."}))
+                                                      (j/call :then (fn [return-value]
+                                                                      (resolve @downloaded)
+                                                                      (when (zero? (j/get return-value :response))
+                                                                        (j/call app :relaunch)
+                                                                        (j/call app :exit 0)))))
+                                                  (resolve @downloaded))))]
+                             (fs/writeFileSync (str updates-directory-path "/latest.json") text)
+                             (doseq [{:keys [path] :as resource} to-download]
+                               (log/info (str "Downloading updated resource file: " path))
+                               (-> (assoc auto-update-config
+                                          :uri path
+                                          :file-path (str updates-directory-path "/" path))
+                                   download-file-to-disk
+                                   (j/call :then (fn []
+                                                   (log/info (str "Downloaded updated resource file: " path))
+                                                   (swap! downloaded conj {:resource resource
+                                                                           :success true})
+                                                   (check-done)))
+                                   (j/call :catch (fn [error]
+                                                    (log/info error)
+                                                    (swap! downloaded conj {:resource resource
+                                                                            :error error})
+                                                    (check-done))))))
+                           (do (log/info "No resources to download.")
+                               (resolve nil)))))
+         (j/call :catch (fn [error]
+                          (log/info error)
+                          (reject error)))))))
+
+(defn check-for-updates-loop
   [auto-update-config]
   (let [check-interval-s (or (:check-interval-s auto-update-config)
                              default-check-interval-s)
-        check-for-updates (fn check-for-updates []
-                            (log/info "Checking for updates...")
-                            (-> (dissect-url (:url auto-update-config))
-                                (merge auto-update-config)
-                                auto-update-resources)
-                            (js/setTimeout check-for-updates (* 1000 check-interval-s)))]
-    (check-for-updates)))
+        check-for-updates* (fn check-for-updates* []
+                             (log/info "Checking for updates...")
+                             (let [schedule-next (fn [] (js/setTimeout check-for-updates* (* 1000 check-interval-s)))]
+                               (-> (check-for-updates auto-update-config)
+                                   (j/call :then #(schedule-next))
+                                   (j/call :catch #(schedule-next)))))]
+    (check-for-updates*)))
 
 (defn install-downloaded-updates
   []
   (js/Promise.
    (fn [resolve reject]
-     (let [latest-json-path (str updates-directory-path "/latest.json")]
-       (if (fs/existsSync latest-json-path)
-         (let [to-install (->> (-> (fs/readFileSync latest-json-path)
-                                   js/JSON.parse
-                                   (js->clj :keywordize-keys true)
-                                   :resources)
-                               (filter (fn [{:keys [path checksum]}]
-                                         (try (not= (->> path
-                                                         (str "extraResources/")
-                                                         pathname
-                                                         file-checksum)
-                                                    checksum)
-                                              (catch js/Error e
-                                                (log/info e)
-                                                false)))))
-               installed (atom 0)]
-           (doseq [{:keys [path checksum]} to-install]
-             (let [downloaded-file (str updates-directory-path "/" path)
-                   current-file (->> path (str "extraResources/") pathname)
-                   local-checksum (file-checksum downloaded-file)
-                   check-done (fn []
-                                (fs/unlink downloaded-file (fn [error] (when error (log/info error))))
-                                (swap! installed inc)
-                                (when (= @installed (count to-install))
-                                  (resolve true)))]
-               (if (= checksum local-checksum)
-                 (do (log/info (str "Installing new resource file " path))
-                     (fs/copyFile downloaded-file current-file
-                                  (fn [error]
-                                    (when error
-                                      (js/console.info error))
-                                    (check-done))))
-                 (do (log/info (str "Checksum for resource file '" path "' ("
-                                    local-checksum
-                                    ") does not match checksum in update config ("
-                                    checksum
-                                    ")"))
-                     (check-done)))))
-           (fs/unlink latest-json-path (fn [error] (when error (log/info error)))))
-         (resolve false))))))
+     (let [updates (atom [])
+           to-install (->> (latest-json-audit)
+                           :resources
+                           (filter (fn [{:keys [path checksums] :as resource}]
+                                     (let [{:keys [remote local-installed local-downloaded]} checksums]
+                                       (and remote local-installed local-downloaded
+                                            (= remote local-downloaded)
+                                            (not= local-downloaded local-installed))))))]
+       (doseq [{:keys [path checksums] :as resource} to-install]
+         (let [check-done (fn [result]
+                            (swap! updates conj {:resource resource
+                                                 :result result})
+                            (when (= (count @updates)
+                                     (count to-install))
+                              (resolve @updates)))]
+           (try (let [downloaded-file (str updates-directory-path "/" path)
+                      current-file (->> path (str "extraResources/") pathname)]
+                  (log/info (str "Installing new resource file " resource))
+                  (fs/copyFile downloaded-file current-file
+                               (fn [error]
+                                 (if error
+                                   (do (js/console.info error)
+                                       (check-done {:error error}))
+                                   (check-done {:success true})))))
+                (catch js/Error e
+                  (check-done {:error e})))))
+       (when (not (seq to-install))
+         (resolve nil))))))
 
 (defn init
   [auto-update-config]
-  (js/Promise.
-   (fn [resolve reject]
-     (if true #_(= "win32" js/process.platform)
-         (try
-           (when (not (fs/existsSync updates-directory-path))
-             (fs/mkdirSync updates-directory-path))
-           (-> (install-downloaded-updates)
-               (j/call :then (fn [installed?]
-                               (js/setTimeout #(check-for-updates-timer auto-update-config) 5000)
-                               (resolve installed?))))
-           (catch js/Error e
-             (log/info e)
-             (resolve false)))
+  (let [{:keys [platforms] :as auto-update-config} (-> (:url auto-update-config)
+                                                       dissect-url
+                                                       (merge auto-update-config))]
+    (js/Promise.
+     (fn [resolve reject]
+       (if (or (not (seq platforms))
+               (get (set (map (comp {:windows "win32"
+                                  :macos "darwin"}
+                                 keyword)
+                              platforms))
+                    platform))
+         (try (when (not (fs/existsSync updates-directory-path))
+                (fs/mkdirSync updates-directory-path))
+              (-> (install-downloaded-updates)
+                  (j/call :then (fn [installed]
+                                  (js/setTimeout #(check-for-updates-loop auto-update-config))
+                                  (if (seq installed)
+                                    (log/info (str "Installed " installed))
+                                    (log/info "No downloaded updates to install."))
+                                  (resolve installed)))
+                  (j/call :catch (fn [error]
+                                   (log/info error)
+                                   (resolve nil))))
+              (catch js/Error e
+                (log/info e)
+                (resolve nil)))
          (do (log/warn "AutoUpdater not available on this platform.")
-             (resolve false))))))
+             (resolve nil)))))))
