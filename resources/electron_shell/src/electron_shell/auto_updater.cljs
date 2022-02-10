@@ -41,9 +41,14 @@
                              (resolve (j/call hash :digest "hex")))
                            (catch js/Error e
                              (log/info e)
-                             (reject nil))))))
+                             (resolve nil)))))
+            (j/call input :on "error"
+                    (fn [error]
+                      (log/info error)
+                      (resolve nil))))
           (catch js/Error e
-            (reject e))))))
+            (log/info e)
+            (resolve nil))))))
 
 (defn updated-resource-checksum
   [resource]
@@ -196,8 +201,8 @@
      (fn [resolve reject]
        (if (or (not (seq platforms))
                (get (set (map (comp {:windows "win32"
-                                     :macos "darwin"}
-                                    keyword)
+                                  :macos "darwin"}
+                                 keyword)
                               platforms))
                     platform))
          (try (when (not (fs/existsSync updates-directory-path))
