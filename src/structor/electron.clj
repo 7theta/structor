@@ -110,6 +110,8 @@
                                                 (update-package-field :app-id "appId")
                                                 (update-package-field :artifact-name "artifactName")
                                                 (update-package-field :app-icon ["build" "win" "icon"]
+                                                                      (partial str "build/"))
+                                                (update-package-field :app-icon ["build" "mac" "icon"]
                                                                       (partial str "build/"))))]
       (spit (format "%s/%s" build-directory res) contents)))
   (when-let [app-icon (:app-icon (config-file))]

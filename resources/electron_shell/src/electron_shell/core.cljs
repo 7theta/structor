@@ -58,9 +58,9 @@
      (try (if config
             (let [{:keys [resources processes]} config
                   _ (doseq [resource resources]
-                      (log/info (str (auto-updater/file-checksum (pathname (str "extraResources/" resource)))
-                                     " "
-                                     resource)))
+                      (-> (pathname (str "extraResources/" resource))
+                          auto-updater/file-checksum
+                          (j/call :then #(log/info (str % " " resource)))))
                   spawn-process (fn spawn-process [process-index]
                                   (if (< process-index (count processes))
                                     (try (let [{:keys [name
@@ -156,7 +156,8 @@
        (if-let [auto-update (:auto-update config)]
          (-> (auto-updater/init auto-update)
              (j/call :then (fn [installed] (spawn-processes)))
-             (j/call :catch (fn [error] (log/info error)))))
+             (j/call :catch (fn [error] (log/info error))))
+         (spawn-processes))
        (j/call window :once "ready-to-show"
                (fn []
                  (when splash-window
