@@ -13,29 +13,39 @@
 
 (declare watch stop)
 
-(defmethod ig/init-key :structor.tailwind/watcher [_ _]
-  {:watcher (watch)})
+(def default-input-file "resources/css/input.css")
+(def default-output-file "resources/public/css/main.css")
+
+(defmethod ig/init-key :structor.tailwind/watcher [_ opts]
+  {:watcher (watch opts)})
 
 (defmethod ig/halt-key! :structor.tailwind/watcher [_ {:keys [watcher]}]
   (stop watcher))
 
 (defn release
-  []
-  @(sh/run ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css" "--minify"]
-     :environment {"NODE_ENV" "production"
-                   "TAILWIND_MODE" "build"}))
+  ([] (release nil))
+  ([{:keys [input-file output-file]
+     :or {input-file default-input-file
+          output-file default-output-file}}]
+   @(sh/run ["npx" "tailwindcss" "-i" input-file "-o" output-file "--minify"]
+      :environment {"NODE_ENV" "production"
+                    "TAILWIND_MODE" "build"})))
 
 (defn watch
-  []
-  (sh/exec ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css"]
-           :environment {"TAILWIND_MODE" "watch"})
-  (sh/exec ["npx" "tailwindcss" "-i" "resources/css/input.css" "-o" "resources/public/css/main.css" "--watch"]
-           :environment {"TAILWIND_MODE" "watch"}))
+  ([] (watch nil))
+  ([{:keys [input-file output-file]
+     :or {input-file default-input-file
+          output-file default-output-file}}]
+   (sh/exec ["npx" "tailwindcss" "-i" input-file "-o" output-file])
+   (sh/exec ["npx" "tailwindcss" "-i" input-file "-o" output-file "--watch"]
+            :environment {"TAILWIND_MODE" "watch"})))
 
 (defn stop
   [watcher]
   (sh/kill watcher))
 
 (defn clean
-  []
-  @(sh/run ["rm" "-f" "resources/public/css/main.css"]))
+  ([] (clean nil))
+  ([{:keys [output-file]
+     :or {output-file default-output-file}}]
+   @(sh/run ["rm" "-f" default-output-file])))
