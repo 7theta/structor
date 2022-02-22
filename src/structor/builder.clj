@@ -32,12 +32,12 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [hooks electron]}]
+  ([{:keys [hooks electron tailwind]}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
    (println (shadow-cljs/release))
-   (println (tailwind/release))
+   (println (tailwind/release tailwind))
    (println @(sh/run ["lein" "uberjar"]))
    ((fsafe (:uberjar hooks)))
    (when (and electron (electron/available?))
@@ -45,12 +45,12 @@
 
 (defn watch
   ([] (watch nil))
-  ([{:keys [hooks]}]
+  ([{:keys [hooks tailwind]}]
    (clean)
    (when (npm-available?) (init))
    ((fsafe (:init hooks)))
    {:shadow-cljs (shadow-cljs/watch)
-    :tailwind (tailwind/watch)}))
+    :tailwind (tailwind/watch tailwind)}))
 
 (defn stop
   [watchers]
