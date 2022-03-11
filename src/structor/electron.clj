@@ -91,6 +91,22 @@
          true (j/write-value-as-string pretty-object-mapper)))
      package-json-string)))
 
+(defn maybe-set-package-field
+  [package-json-string package-kp value]
+  (when value
+    (cond-> (j/read-value package-json-string)
+      (sequential? package-kp) (assoc-in package-kp value)
+      (not (sequential? package-kp)) (assoc package-kp value)
+      true (j/write-value-as-string pretty-object-mapper))))
+
+(defn project-version
+  []
+  (try (-> (slurp "project.clj")
+           read-string
+           (nth 2))
+       (catch Exception e
+         nil)))
+
 (defn copy-resource-files-to-build-directory
   [build-directory]
   (mkdir build-directory)
@@ -112,7 +128,8 @@
                                                 (update-package-field :app-icon ["build" "win" "icon"]
                                                                       (partial str "build/"))
                                                 (update-package-field :app-icon ["build" "mac" "icon"]
-                                                                      (partial str "build/"))))]
+                                                                      (partial str "build/"))
+                                                (maybe-set-package-field "version" (project-version))))]
       (spit (format "%s/%s" build-directory res) contents)))
   (when-let [app-icon (:app-icon (config-file))]
     (mkdir (format "%s/build" build-directory))
