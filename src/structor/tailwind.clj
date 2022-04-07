@@ -9,7 +9,10 @@
 
 (ns structor.tailwind
   (:require [crusta.core :as sh]
-            [integrant.core :as ig]))
+            [integrant.core :as ig]
+            [utilis.map :refer [compact]]
+            [clojure.java.io :as io]
+            [clojure.string :as st]))
 
 (declare watch stop)
 
@@ -48,4 +51,4 @@
   ([] (clean nil))
   ([{:keys [output-file]
      :or {output-file default-output-file}}]
-   @(sh/run ["rm" "-f" default-output-file])))
+   @(sh/run ["rm" "-f" output-file])))
