@@ -8,7 +8,7 @@
 ;;   You must not remove this notice, or any others, from this software.
 
 (ns structor.shadow-cljs
-  (:require [structor.available :refer [rn-available?]]
+  (:require [structor.available :refer [rn?]]
             [shadow.cljs.devtools.server :as server]
             [shadow.cljs.devtools.api :as shadow]
             [crusta.core :as sh]
@@ -38,5 +38,5 @@
 (defn clean
   []
   @(sh/run ["rm" "-rf" "target" "resources/public/js/compiled" ".shadow-cljs"])
-  (when rn-available?
+  (when rn?
     @(sh/run ["rm" "-rf" "app"])))
