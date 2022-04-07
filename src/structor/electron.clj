@@ -22,14 +22,6 @@
 
 (def default-build-directory ".electron-shell")
 
-(defn available?
-  []
-  (let [file (io/file "electron")]
-    (and (.exists file)
-         (.isDirectory file)
-         (or (.exists (io/file "electron/main/index.html"))
-             (.exists (io/file "electron/config.edn"))))))
-
 (defn clean
   ([] (clean default-build-directory))
   ([build-directory]
