@@ -12,7 +12,8 @@
   :url "https://github.com/7theta/structor"
   :license {:name "MIT License"
             :url "https://opensource.org/licenses/MIT"}
-  :dependencies [[com.7theta/crusta "1.0.0"]
+  :dependencies [[org.clojure/clojure "1.10.3"]
+                 [com.7theta/crusta "1.0.0"]
                  [com.7theta/tailwind "0.4.0"]
                  [binaryage/devtools "1.0.4"]
                  [thheller/shadow-cljs "2.17.1" :exclusions [org.clojure/core.async]]
