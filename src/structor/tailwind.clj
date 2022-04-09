@@ -39,7 +39,7 @@
   ([{:keys [input-file output-file]
      :or {input-file default-input-file
           output-file default-output-file}}]
-   (sh/exec ["npx" "tailwindcss" "-i" input-file "-o" output-file])
+   @(sh/run ["npx" "tailwindcss" "-i" input-file "-o" output-file])
    (sh/exec ["npx" "tailwindcss" "-i" input-file "-o" output-file "--watch"]
             :environment {"TAILWIND_MODE" "watch"})))
 
