@@ -35,42 +35,58 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [hooks electron tailwind tailwind-rn]}]
+  ([{:keys [hooks] :as opts}]
    (clean)
    (when (npm?) (init))
-   ((fsafe (:init hooks)))
-   (when (rn?)
-     (println (tailwind-rn/write-dummy-js)))
-   (println (shadow-cljs/release))
-   (println (tailwind/release
-             (merge (when (rn?)
-                      {:input-file tailwind-rn/default-input-tailwind-css
-                       :output-file tailwind-rn/default-output-tailwind-css})
-                    tailwind)))
-   (when (rn?)
-     (println (tailwind-rn/release tailwind-rn))
-     (println "Rebuilding with tailwind-rn utilities...")
-     (println (shadow-cljs/release)))
-   (when (not (rn?))
-     (println @(sh/run ["lein" "uberjar"]))
-     ((fsafe (:uberjar hooks))))
-   (when (and electron (electron?))
-     (electron/release))))
+   (let [init-result ((fsafe (:init hooks)) opts)
+         {:keys [hooks
+                 electron
+                 tailwind
+                 tailwind-rn
+                 shadow-cljs]
+          :as opts} (merge (when (map? init-result)
+                             init-result)
+                           opts)]
+     (when (rn?)
+       (println (tailwind-rn/write-dummy-js)))
+     (println (shadow-cljs/release shadow-cljs))
+     (println (tailwind/release
+               (merge (when (rn?)
+                        {:input-file tailwind-rn/default-input-tailwind-css
+                         :output-file tailwind-rn/default-output-tailwind-css})
+                      tailwind)))
+     (when (rn?)
+       (println (tailwind-rn/release tailwind-rn))
+       (println "Rebuilding with tailwind-rn utilities...")
+       (println (shadow-cljs/release shadow-cljs)))
+     (when (not (rn?))
+       (println @(sh/run ["lein" "uberjar"]))
+       ((fsafe (:uberjar hooks))))
+     (when (and electron (electron?))
+       (electron/release)))))
 
 (defn watch
   ([] (watch nil))
-  ([{:keys [hooks tailwind tailwind-rn]}]
+  ([{:keys [hooks tailwind tailwind-rn shadow-cljs] :as opts}]
    (clean)
    (when (npm?) (init))
-   ((fsafe (:init hooks)))
-   (let [tailwind-watcher (tailwind/watch
+   (let [init-result ((fsafe (:init hooks)) opts)
+         {:keys [hooks
+                 electron
+                 tailwind
+                 tailwind-rn
+                 shadow-cljs]
+          :as opts} (merge (when (map? init-result)
+                             init-result)
+                           opts)
+         tailwind-watcher (tailwind/watch
                            (merge (when (rn?)
                                     {:input-file tailwind-rn/default-input-tailwind-css
                                      :output-file tailwind-rn/default-output-tailwind-css})
                                   tailwind))
          rn-watcher (when (rn?)
                       (tailwind-rn/watch tailwind-rn))]
-     (merge {:shadow-cljs (shadow-cljs/watch)
+     (merge {:shadow-cljs (shadow-cljs/watch shadow-cljs)
              :tailwind tailwind-watcher}
             (when rn-watcher {:tailwind-rn rn-watcher})))))
 

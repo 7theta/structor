@@ -9,27 +9,42 @@
 
 (ns structor.shadow-cljs
   (:require [structor.available :refer [rn?]]
+            [shadow.cljs.devtools.config :as config]
             [shadow.cljs.devtools.server :as server]
             [shadow.cljs.devtools.api :as shadow]
+            [shadow.cljs.devtools.errors :as e]
             [crusta.core :as sh]
             [integrant.core :as ig]))
 
 (declare watch stop)
 
-(defmethod ig/init-key :structor.shadow-cljs/watcher [_ _]
-  {:watcher (watch)})
+(defmethod ig/init-key :structor.shadow-cljs/watcher [_ opts]
+  {:watcher (watch opts)})
 
 (defmethod ig/halt-key! :structor.shadow-cljs/watcher [_ {:keys [watcher]}]
   (stop watcher))
 
 (defn release
-  []
-  (shadow/release :prod))
+  ([] (release nil))
+  ([{:keys [build-id build-config]
+     :or {build-id :prod}
+     :as opts}]
+   (if build-config
+     (do (shadow/with-runtime
+           (shadow/release* build-config {}))
+         :done)
+     (shadow/release build-id))))
 
 (defn watch
-  []
-  (server/start!)
-  (shadow/watch :dev))
+  ([] (watch nil))
+  ([{:keys [build-id build-config]
+     :or {build-id :dev}
+     :as opts}]
+   (server/start!)
+   (if build-config
+     (do (shadow/watch* build-config {})
+         :watching)
+     (shadow/watch build-id))))
 
 (defn stop
   [_watcher]
