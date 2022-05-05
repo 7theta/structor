@@ -9,6 +9,7 @@
 
 (ns structor.shadow-cljs
   (:require [structor.available :refer [rn?]]
+            [structor.index-html :as index-html]
             [shadow.cljs.devtools.config :as config]
             [shadow.cljs.devtools.server :as server]
             [shadow.cljs.devtools.api :as shadow]
@@ -29,6 +30,7 @@
   ([{:keys [build-id build-config]
      :or {build-id :prod}
      :as opts}]
+   (index-html/generate)
    (if build-config
      (do (shadow/with-runtime
            (shadow/release* build-config {}))
@@ -40,6 +42,7 @@
   ([{:keys [build-id build-config]
      :or {build-id :dev}
      :as opts}]
+   (index-html/generate)
    (server/start!)
    (if build-config
      (do (shadow/watch* build-config {})
@@ -52,6 +55,8 @@
 
 (defn clean
   []
-  @(sh/run ["rm" "-rf" "target" "resources/public/js/compiled" ".shadow-cljs"])
+  @(sh/run ["rm" "-rf" "target" ".shadow-cljs"
+            "resources/public/js/compiled"
+            "resources/public/index.html"])
   (when rn?
     @(sh/run ["rm" "-rf" "app"])))

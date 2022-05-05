@@ -16,7 +16,7 @@
 
 (declare watch stop)
 
-(def default-input-file "resources/css/input.css")
+(def default-input-file "dev-resources/css/input.css")
 (def default-output-file "resources/public/css/main.css")
 
 (defmethod ig/init-key :structor.tailwind/watcher [_ opts]

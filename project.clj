@@ -7,18 +7,18 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any others, from this software.
 
-(defproject com.7theta/structor "0.7.0"
+(defproject com.7theta/structor "0.8.0"
   :description "shadow-cljs and tailwind builds"
   :url "https://github.com/7theta/structor"
   :license {:name "MIT License"
             :url "https://opensource.org/licenses/MIT"}
-  :dependencies [[org.clojure/clojure "1.10.3"]
-                 [com.7theta/crusta "1.0.0"]
+  :dependencies [[com.7theta/crusta "1.0.0"]
                  [com.7theta/tailwind "0.4.0"]
-                 [binaryage/devtools "1.0.4"]
-                 [thheller/shadow-cljs "2.17.1" :exclusions [org.clojure/core.async]]
-                 [org.clojure/core.async "1.5.648"]
+                 [binaryage/devtools "1.0.6"]
+                 [thheller/shadow-cljs "2.18.0"]
                  [metosin/jsonista "0.3.5"]
-                 [integrant "0.8.0"]]
+                 [integrant "0.8.0"]
+                 [integrant/repl "0.3.2"]]
+  :profiles {:dev {:dependencies [[org.clojure/clojure "1.11.1"]]}}
   :scm {:name "git"
         :url "https://github.com/7theta/structor"})
