@@ -76,9 +76,9 @@
                  tailwind
                  tailwind-rn
                  shadow-cljs]
-          :as opts} (merge (when (map? init-result)
-                             init-result)
-                           opts)
+          :as opts} (merge opts
+                           (when (map? init-result)
+                             init-result))
          tailwind-watcher (tailwind/watch
                            (merge (when (rn?)
                                     {:input-file tailwind-rn/default-input-tailwind-css

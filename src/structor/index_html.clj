@@ -2,8 +2,10 @@
   (:require [clojure.string :as st]))
 
 (defn generate
-  []
+  [{:keys [output-file input-file]
+    :or {output-file "resources/public/index.html"
+         input-file "dev-resources/templates/index.html"}}]
   (let [version (last (re-find #"defproject .* \"(.*)\"" (slurp "project.clj")))]
-    (-> (slurp "dev-resources/templates/index.html")
+    (-> (slurp input-file)
         (st/replace #"APP_VERSION" version)
-        (->> (spit "resources/public/index.html")))))
+        (->> (spit output-file)))))

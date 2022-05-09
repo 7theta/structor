@@ -27,10 +27,10 @@
 
 (defn release
   ([] (release nil))
-  ([{:keys [build-id build-config]
+  ([{:keys [build-id build-config index-html]
      :or {build-id :prod}
      :as opts}]
-   (index-html/generate)
+   (index-html/generate index-html)
    (if build-config
      (do (shadow/with-runtime
            (shadow/release* build-config {}))
@@ -39,10 +39,10 @@
 
 (defn watch
   ([] (watch nil))
-  ([{:keys [build-id build-config]
+  ([{:keys [build-id build-config index-html]
      :or {build-id :dev}
      :as opts}]
-   (index-html/generate)
+   (index-html/generate index-html)
    (server/start!)
    (if build-config
      (do (shadow/watch* build-config {})
