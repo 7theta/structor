@@ -44,9 +44,9 @@
                  tailwind
                  tailwind-rn
                  shadow-cljs]
-          :as opts} (merge (when (map? init-result)
-                             init-result)
-                           opts)]
+          :as opts} (merge opts
+                           (when (map? init-result)
+                             init-result))]
      (when (rn?)
        (println (tailwind-rn/write-dummy-js)))
      (println (shadow-cljs/release shadow-cljs))
