@@ -30,7 +30,8 @@
   ([{:keys [build-id build-config index-html]
      :or {build-id :prod}
      :as opts}]
-   (index-html/generate index-html)
+   (when (not (rn?))
+     (index-html/generate index-html))
    (if build-config
      (do (shadow/with-runtime
            (shadow/release* build-config {}))
@@ -42,7 +43,8 @@
   ([{:keys [build-id build-config index-html]
      :or {build-id :dev}
      :as opts}]
-   (index-html/generate index-html)
+   (when (not (rn?))
+     (index-html/generate index-html))
    (server/start!)
    (if build-config
      (do (shadow/watch* build-config {})
@@ -55,8 +57,12 @@
 
 (defn clean
   []
-  @(sh/run ["rm" "-rf" "target" ".shadow-cljs"
-            "resources/public/js/compiled"
-            "resources/public/index.html"])
+  @(sh/run (vec
+            (concat
+             ["rm" "-rf" "target" ".shadow-cljs"]
+             (when rn? ["app"])
+             (when (not rn?)
+               ["resources/public/js/compiled"
+                "resources/public/index.html"]))))
   (when rn?
     @(sh/run ["rm" "-rf" "app"])))
