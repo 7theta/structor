@@ -7,13 +7,13 @@
 ;;   the terms of this license.
 ;;   You must not remove this notice, or any others, from this software.
 
-(defproject com.7theta/structor "0.8.4"
+(defproject com.7theta/structor "0.8.5"
   :description "shadow-cljs and tailwind builds"
   :url "https://github.com/7theta/structor"
   :license {:name "MIT License"
             :url "https://opensource.org/licenses/MIT"}
-  :dependencies [[com.7theta/crusta "1.0.0"]
-                 [com.7theta/tailwind "0.4.0"]
+  :dependencies [[com.7theta/crusta "1.0.1"]
+                 [com.7theta/tailwind "0.6.0"]
                  [binaryage/devtools "1.0.6"]
                  [thheller/shadow-cljs "2.19.0"]
                  [metosin/jsonista "0.3.5"]
