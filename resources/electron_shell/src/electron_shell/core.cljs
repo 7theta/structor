@@ -68,6 +68,7 @@
                                                        args
                                                        opts
                                                        load-from-url
+                                                       start-delay-ms
                                                        platforms]
                                                 :as process-config} (nth processes process-index)]
                                            (if (and cmd (or (not (seq platforms))
@@ -98,7 +99,12 @@
                                                                    (str log-prefix msg)
                                                                    log/info)
                                                               data))
-                                                   on-process-spawned (fn [] (spawn-process (inc process-index)))]
+                                                   on-process-spawned (fn []
+                                                                        (js/setTimeout
+                                                                         (fn [] (spawn-process (inc process-index)))
+                                                                         (if (number? start-delay-ms)
+                                                                           start-delay-ms
+                                                                           0)))]
                                                (swap! running-processes conj {:process process
                                                                               :config process-config})
                                                (when (and (string? load-from-url)
@@ -115,7 +121,11 @@
                                                (j/call process :on "close" (logger "process exited with code: "))
                                                (when (not= "auto" load-from-url)
                                                  (j/call process :on "spawn" on-process-spawned)))
-                                             (spawn-process (inc process-index))))
+                                             (js/setTimeout
+                                              (fn [] (spawn-process (inc process-index)))
+                                              (if (number? start-delay-ms)
+                                                start-delay-ms
+                                                0))))
                                          (catch js/Error e
                                            (log/info e)))
                                     (resolve)))]
@@ -183,27 +193,19 @@
   (when (nil? @main-window)
     (create-window)))
 
-(defn- kill-if-present
-  [process-ref kill?]
-  (when-let [process @process-ref]
-    (reset! process-ref nil)
-    (if kill?
-      (j/call process :kill "SIGKILL")
-      (j/call process :kill))))
-
 (defn kill-running-processes
   []
   (log/info "Killing spawned processes.")
-  (doseq [{:keys [process process-config]} @running-processes]
-    (try (when (not (j/get process :killed))
-           (log/info (str "Killing "
-                          (or (:name process-config)
-                              (str process-config))))
-           (if-let [sig (:kill-signal process-config)]
-             (j/call process :kill sig)
-             (j/call process :kill)))
-         (catch js/Error e
-           (log/info e))))
+  (doseq [{:keys [process config]} @running-processes]
+    (let [process-name (or (:name config) (str config))]
+      (try (if (not (j/get process :killed))
+             (do (log/info (str "Killing " process-name))
+                 (if-let [sig (:kill-signal config)]
+                   (j/call process :kill sig)
+                   (j/call process :kill)))
+             (log/info (str "Process already killed: " process-name)))
+           (catch js/Error e
+             (log/info e)))))
   (reset! running-processes []))
 
 (defn- maybe-quit
@@ -216,8 +218,19 @@
   []
   (j/call js/process :exit))
 
+(defn- handle-certificate-error
+  "https://www.electronjs.org/docs/latest/api/app#event-certificate-error"
+  [event web-contents url error certificate callback]
+  (if (and (= (st/lower-case (str error))
+              (st/lower-case "net::ERR_CERT_AUTHORITY_INVALID"))
+           (re-find #"^https://localhost" url))
+    (do (j/call event :preventDefault)
+        (callback true))
+    (callback false)))
+
 (defn ^:export main
   [& args]
+  (j/call app :on "certificate-error" handle-certificate-error)
   (if (j/call app :requestSingleInstanceLock)
     (do (-> app
             (j/call :whenReady)
