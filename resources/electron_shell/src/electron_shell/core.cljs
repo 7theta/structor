@@ -15,6 +15,7 @@
 (defonce is-debug? (not (j/get app :isPackaged)))
 (defonce kill-when-empty-on-darwin? true)
 (def platform js/process.platform)
+(def js-process js/process)
 
 (def splash-index-pathname (pathname "splash/index.html"))
 (def splash-index-url (file-url splash-index-pathname))
@@ -37,10 +38,12 @@
 
 (defn- auto-load-from-url
   [data]
-  (let [data (str data)]
-    (when (includes? data "URL:")
-      (let [result (last (re-find #".*URL: \s*([^\n\r]*)" data))]
-        (j/call @main-window :loadURL result)))))
+  (boolean
+   (let [data (str data)]
+     (when (includes? data "URL:")
+       (let [result (last (re-find #".*URL: \s*([^\n\r]*)" data))]
+         (j/call @main-window :loadURL result)
+         true)))))
 
 (defn replace-resource-refs
   [resources string]
@@ -90,6 +93,9 @@
                                                              cmd (spawn cmd)
                                                              :else (throw (js/Error. (str "Unable to spawn process"
                                                                                           (clj->js process-config)))))
+                                                   _ (swap! running-processes conj
+                                                            {:process process
+                                                             :config process-config})
                                                    log-prefix (if name
                                                                 (str "[" name "] ")
                                                                 (str "[process_" process-index "]"))
@@ -104,19 +110,38 @@
                                                                          (fn [] (spawn-process (inc process-index)))
                                                                          (if (number? start-delay-ms)
                                                                            start-delay-ms
-                                                                           0)))]
-                                               (swap! running-processes conj {:process process
-                                                                              :config process-config})
-                                               (when (and (string? load-from-url)
-                                                          (not= "auto" load-from-url))
-                                                 (j/call @main-window :loadURL load-from-url))
+                                                                           0)))
+
+                                                   exit-timeout (atom nil)]
+                                               (cond
+                                                 (and (string? load-from-url)
+                                                      (not= "auto" load-from-url))
+                                                 (j/call @main-window :loadURL load-from-url)
+
+                                                 ;; 10s to print out a URL:// otherwise we exit
+                                                 (= "auto" load-from-url)
+                                                 (reset! exit-timeout
+                                                         (js/setTimeout
+                                                          (fn []
+                                                            (log/info "Terminating app, no auto-load URL read...")
+                                                            (j/call js-process :exit 1))
+                                                          10000))
+
+                                                 :else nil)
+
                                                (j/call-in process [:stdout :on] "data"
                                                           (let [logger (logger "stdout: ")]
                                                             (if (= "auto" load-from-url)
-                                                              (comp #(on-process-spawned)
+                                                              (comp (fn [loaded?]
+                                                                   (on-process-spawned)
+                                                                   (when loaded?
+                                                                     (when-let [timeout @exit-timeout]
+                                                                       (js/clearTimeout timeout)
+                                                                       (reset! exit-timeout nil))))
                                                                  auto-load-from-url
                                                                  logger)
                                                               logger)))
+
                                                (j/call-in process [:stderr :on] "data" (logger "stderr: "))
                                                (j/call process :on "close" (logger "process exited with code: "))
                                                (when (not= "auto" load-from-url)
@@ -199,10 +224,13 @@
   (doseq [{:keys [process config]} @running-processes]
     (let [process-name (or (:name config) (str config))]
       (try (if (not (j/get process :killed))
-             (do (log/info (str "Killing " process-name))
-                 (if-let [sig (:kill-signal config)]
-                   (j/call process :kill sig)
-                   (j/call process :kill)))
+             (let [sig (:kill-signal config)]
+               (log/info (str "Killing " process-name
+                              (when sig
+                                (str " with signal: " sig))))
+               (if sig
+                 (j/call process :kill sig)
+                 (j/call process :kill)))
              (log/info (str "Process already killed: " process-name)))
            (catch js/Error e
              (log/info e)))))
@@ -237,6 +265,8 @@
             (j/call :then (fn []
                             (create-window)
                             (j/call app :on "activate" maybe-create-window))))
+        (j/call app :on "before-quit"
+                #(j/call @main-window :removeAllListeners "close"))
         (j/call app :on "window-all-closed" maybe-quit)
         (j/call js/process :on "exit" kill-running-processes)
         (j/call js/process :on "SIGINT" exit-cleanly)

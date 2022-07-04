@@ -139,7 +139,7 @@
         (if (.exists file)
           (cp resource (format "%s/extraResources" build-directory)
               :directory (.isDirectory file))
-          (throw (ex-info (format "Resource file does not exist.")
+          (throw (ex-info (str "Resource file does not exist (" (str resource) ")")
                           {:resource resource})))))
     (->> pretty-object-mapper
          (j/write-value-as-string config)
