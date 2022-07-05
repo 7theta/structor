@@ -15,10 +15,14 @@
 (def electron-shell-resources
   ["package.json"
    "shadow-cljs.edn"
-   "src/electron_shell/core.cljs"
    "src/electron_shell/auto_updater.cljs"
+   "src/electron_shell/config.cljs"
+   "src/electron_shell/core.cljs"
+   "src/electron_shell/debug.cljs"
    "src/electron_shell/download.cljs"
-   "src/electron_shell/file_utils.cljs"])
+   "src/electron_shell/file_utils.cljs"
+   "src/electron_shell/processes.cljs"
+   "src/electron_shell/window.cljs"])
 
 (def default-build-directory ".electron-shell")
 
