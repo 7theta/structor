@@ -4,6 +4,9 @@
             [electron-shell.config :refer [config]]
             [electron :as e :refer [app BrowserWindow globalShortcut Menu dialog]]
             [electron-log :as log]
+            [https :as https]
+            [http2 :as http2]
+            [http :as http]
             ["child_process" :refer [spawn]]
             [path :as path]
             [url :as url]
@@ -15,7 +18,7 @@
 (def platform js/process.platform)
 (defonce children (atom []))
 
-(declare spawn-processes print-resource-checksums)
+(declare spawn-processes print-resource-checksums http-get)
 
 (defn spawn-all
   [window {:keys [processes resources]}]
@@ -30,29 +33,55 @@
             (reject e))))))
 
 (defn kill-all
-  []
-  (doseq [{:keys [process config]} (reverse @children)]
-    (try (let [{:keys [kill-signal name]} config
-               process-name (or name (str config))]
-           (log/info (str "Killing " process-name
-                          (when kill-signal
-                            (str " with signal: " kill-signal))))
-           (if kill-signal
-             (j/call process :kill kill-signal)
-             (j/call process :kill)))
-         (catch js/Error e
-           (log/info "Error killing process" (str config) e)))))
+  ([] (kill-all false))
+  ([force?]
+   (js/Promise.
+    (fn [resolve _]
+      (let [to-kill (count @children)
+            killed (atom 0)
+            proceed (fn []
+                      (when (= to-kill (swap! killed inc))
+                        (log/info "All child processes killed. Continuing.")
+                        (resolve)))]
+        (doseq [{:keys [process config]} (reverse @children)]
+          (let [proceed-error (fn [error]
+                                (log/info "Error killing process" (str config) error)
+                                (proceed))]
+            (try (let [{:keys [kill-signal kill-endpoint server-cert auto-load-url name]} config
+                       process-name (or name (str config))
+                       kill-endpoint (when (and (not force?) kill-endpoint)
+                                       (if auto-load-url
+                                         (let [base (st/replace auto-load-url #"/$" "")
+                                               path (st/replace kill-endpoint #"^/" "")]
+                                           (str base "/" path))
+                                         kill-endpoint))]
+                   (log/info (str "Killing " process-name
+                                  (if kill-endpoint
+                                    (str " with kill-endpoint: " kill-endpoint)
+                                    (when kill-signal
+                                      (str " with signal: " kill-signal)))))
+                   (prn kill-endpoint server-cert)
+                   (if (and kill-endpoint server-cert)
+                     (-> (http-get kill-endpoint server-cert)
+                         (j/call :then proceed)
+                         (j/call :catch proceed-error))
+                     (do (if kill-signal
+                           (j/call process :kill kill-signal)
+                           (j/call process :kill))
+                         (proceed))))
+                 (catch js/Error e
+                   (proceed-error e)))))
+        (reset! children []))))))
 
 ;;; Private
 
 (defn- auto-load-from-url
   [window data]
-  (boolean
-   (let [data (str data)]
-     (when (includes? data "URL:")
-       (let [result (last (re-find #".*URL: \s*([^\n\r]*)" data))]
-         (j/call window :loadURL result)
-         true)))))
+  (let [data (str data)]
+    (when (includes? data "URL:")
+      (let [result (last (re-find #".*URL: \s*([^\n\r]*)" data))]
+        (j/call window :loadURL result)
+        result))))
 
 (defn replace-resource-refs
   [resources string]
@@ -132,10 +161,13 @@
                (when args (str " " args))
                (when opts (str " " opts))))
          (let [process (spawn-process* cmd args opts)
-               spawn-next-process (fn []
+               spawn-next-process (fn [& [config]]
                                     (if start-delay-ms
-                                      (js/setTimeout #(resolve process) start-delay-ms)
-                                      (resolve process)))
+                                      (js/setTimeout #(resolve {:process process
+                                                                :config config})
+                                                     start-delay-ms)
+                                      (resolve {:process process
+                                                :config config})))
                kill-process #(if kill-signal
                                (j/call process :kill kill-signal)
                                (j/call process :kill))]
@@ -161,10 +193,11 @@
                         10000))
                (j/call-in process [:stdout :on] "data"
                           (fn [data]
-                            (when (auto-load-from-url window data)
-                              ((fsafe js/clearTimeout) @exit-timeout)
-                              (reset! exit-timeout nil))
-                            (spawn-next-process))))
+                            (if-let [url (auto-load-from-url window data)]
+                              (do ((fsafe js/clearTimeout) @exit-timeout)
+                                  (reset! exit-timeout nil)
+                                  (spawn-next-process {:auto-load-url url}))
+                              (spawn-next-process)))))
 
              :else (j/call process :on "spawn" spawn-next-process))))))))
 
@@ -176,9 +209,16 @@
           (spawn-process resources process-config)
           (j/call :then (fn [process]
                           (when process
-                            (swap! children conj
-                                   {:process process
-                                    :config process-config}))
+                            (let [process-config (if (map? process)
+                                                   (merge process-config
+                                                          (:config process))
+                                                   process-config)
+                                  process (if (map? process)
+                                            (:process process)
+                                            process)]
+                              (swap! children conj
+                                     {:process process
+                                      :config process-config})))
                           (spawn-next)))
           (j/call :catch (fn [error]
                            (log/info "Error occurred spawning process"
@@ -193,3 +233,22 @@
     (-> (pathname (str "extraResources/" resource))
         auto-updater/file-checksum
         (j/call :then #(log/info (str % " " resource))))))
+
+(defn- http-get
+  [url server-cert]
+  (js/Promise.
+   (fn [resolve reject]
+     (let [{:keys [protocol hostname port path-prefix]} (auto-updater/dissect-url url)
+           client (http2/connect (str protocol "//" hostname ":" port)
+                                 #js {:ca (fs/readFileSync server-cert)})
+           req (j/call client :request {":path" path-prefix})
+           resolved? (atom false)
+           resolve (fn [& _]
+                     (try (j/call client :close)
+                          (catch js/Error e))
+                     (when (not @resolved?)
+                       (reset! resolved? true)
+                       (resolve)))]
+       (j/call req :on "end" resolve)
+       (j/call req :end)
+       (js/setTimeout resolve 100)))))

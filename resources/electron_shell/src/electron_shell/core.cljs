@@ -60,12 +60,21 @@
       (log/info "Unable to create main window.")
       (quit-app))))
 
+(defn safely-quit
+  [event]
+  (j/call event :preventDefault)
+  (j/call globalShortcut :unregisterAll)
+  ((fsafe j/call) @main-window :removeAllListeners "close")
+  (-> (p/kill-all)
+      (j/call :then #(exit-process))
+      (j/call :catch #(do (log/info "Error occurred killing sub processes" %)
+                          (exit-process)))))
+
 (defn- setup-handlers
   []
   (j/call app :on "certificate-error" handle-certificate-error)
   (j/call app :on "second-instance" handle-second-instance)
-  (j/call app :on "will-quit" #(j/call globalShortcut :unregisterAll))
-  (j/call app :on "before-quit" #((fsafe j/call) @main-window :removeAllListeners "close"))
+  (j/call app :on "before-quit" safely-quit)
   (j/call app :on "window-all-closed" quit-app)
   (j/call js/process :on "exit" #(p/kill-all))
   (j/call js/process :on "SIGINT" exit-process)
